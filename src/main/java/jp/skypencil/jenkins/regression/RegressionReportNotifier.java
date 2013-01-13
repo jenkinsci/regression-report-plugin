@@ -1,5 +1,6 @@
 package jp.skypencil.jenkins.regression;
 
+import static com.google.common.collect.Iterables.transform;
 import hudson.Extension;
 import hudson.Launcher;
 import hudson.Util;
@@ -7,6 +8,7 @@ import hudson.model.BuildListener;
 import hudson.model.Result;
 import hudson.model.AbstractBuild;
 import hudson.model.AbstractProject;
+import hudson.model.User;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Notifier;
@@ -24,6 +26,7 @@ import java.util.StringTokenizer;
 import javax.mail.Address;
 import javax.mail.Message.RecipientType;
 import javax.mail.MessagingException;
+import javax.mail.Session;
 import javax.mail.Transport;
 import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;
@@ -42,12 +45,29 @@ import com.google.common.collect.Sets;
  * @author eller86 (Kengo TODA)
  */
 public final class RegressionReportNotifier extends Notifier {
-	private static final int MAX_RESULTS_PER_MAIL = 20;
+    static interface MailSender {
+        void send(MimeMessage message) throws MessagingException;
+    }
+
+    private static final int MAX_RESULTS_PER_MAIL = 20;
 	private final String recipients;
+	private final boolean sendToCulprits;
+	private MailSender mailSender = new RegressionReportNotifier.MailSender() {
+	    @Override
+	    public void send(MimeMessage message) throws MessagingException {
+	        Transport.send(message);
+	    }
+	};
 
 	@DataBoundConstructor
-	public RegressionReportNotifier(String recipients) {
+	public RegressionReportNotifier(String recipients, boolean sendToCulprits) {
 		this.recipients = recipients;
+		this.sendToCulprits = sendToCulprits;
+	}
+
+	@VisibleForTesting
+	void setMailSender(MailSender mailSender) {
+	    this.mailSender = mailSender;
 	}
 
 	@Override
@@ -57,6 +77,10 @@ public final class RegressionReportNotifier extends Notifier {
 
 	public String getRecipients() {
 		return recipients;
+	}
+
+	public boolean getSendToCulprits() {
+		return sendToCulprits;
 	}
 
 	@Override
@@ -112,7 +136,15 @@ public final class RegressionReportNotifier extends Notifier {
 
 		// TODO link to test result page
 		StringBuilder builder = new StringBuilder();
-		builder.append(Util.encode(Jenkins.getInstance().getRootUrl()));
+		String rootUrl = "";
+        Session session = null;
+        InternetAddress adminAddress = null;
+		if (Jenkins.getInstance() != null) {
+		    rootUrl = Jenkins.getInstance().getRootUrl();
+		    session = Mailer.descriptor().createSession();
+		    adminAddress = new InternetAddress(Mailer.descriptor().getAdminAddress());
+		}
+		builder.append(Util.encode(rootUrl));
 		builder.append(Util.encode(build.getUrl()));
 		builder.append("\n\n");
 		builder.append(regressions.size() + " regressions found.");
@@ -127,31 +159,45 @@ public final class RegressionReportNotifier extends Notifier {
 			builder.append("  ...");
 			builder.append("\n");
 		}
+		List<Address> recipentList = parse(recipients, listener);
+		if (sendToCulprits) {
+		    recipentList.addAll(loadAddrOfCulprits(build, listener));
+		}
 
-		MimeMessage message = new MimeMessage(Mailer.descriptor().createSession());
+		MimeMessage message = new MimeMessage(session);
 		message.setSubject(Messages.RegressionReportNotifier_MailSubject());
-		message.setRecipients(RecipientType.TO, convertToAddr(recipients, listener));
+		message.setRecipients(RecipientType.TO, recipentList.toArray(new Address[recipentList.size()]));
 		message.setContent("", "text/plain");
-		message.setFrom(new InternetAddress(Mailer.descriptor().getAdminAddress()));
+		message.setFrom(adminAddress);
 		message.setText(builder.toString());
 		message.setSentDate(new Date());
 
-		Transport.send(message);
+		mailSender.send(message);
 	}
 
-	private Address[] convertToAddr(String recipients, BuildListener listener) {
-		Set<InternetAddress> set = Sets.newHashSet();
+	private Set<Address> loadAddrOfCulprits(AbstractBuild<?, ?> build,
+			BuildListener listener) {
+		Set<User> authorSet = Sets.newHashSet(transform(
+				build.getChangeSet(),
+				new ChangeSetToAuthor()));
+		Set<Address> addressSet = Sets.newHashSet(transform(
+				authorSet, new UserToAddr(listener.getLogger())));
+		return addressSet;
+	}
+
+	private List<Address> parse(String recipients, BuildListener listener) {
+		List<Address> list = Lists.newArrayList();
 		StringTokenizer tokens = new StringTokenizer(recipients);
 		while (tokens.hasMoreTokens()) {
 			String address = tokens.nextToken();
 			try {
-				set.add(new InternetAddress(address));
+			    list.add(new InternetAddress(address));
 			} catch (AddressException e) {
 				e.printStackTrace(listener.error(e.getMessage()));
 			}
 		}
 
-		return set.toArray(new Address[set.size()]);
+		return list;
 	}
 
 	@VisibleForTesting

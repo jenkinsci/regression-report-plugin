@@ -16,6 +16,14 @@ Screen shot
 -----------
 ![screen shot of configure](https://raw.github.com/jenkinsci/regression-report-plugin/master/screenshot.png)
 
+Changelog
+---------
+### 1.0
+- first release
+
+### 1.1
+- send mail to culprit [#1](https://github.com/jenkinsci/regression-report-plugin/issues/1)
+
 
 Copyright and license
 ---------------------

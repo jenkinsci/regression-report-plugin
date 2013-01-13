@@ -2,4 +2,7 @@
   <f:entry field="recipients" title="${%Recipients}">
     <f:textbox />
   </f:entry>
+  <f:entry field="sendToCulprits" title="${%SentToCulprits}">
+    <f:checkbox />
+  </f:entry>
 </j:jelly>
