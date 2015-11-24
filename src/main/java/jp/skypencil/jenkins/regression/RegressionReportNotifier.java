@@ -102,6 +102,22 @@ public final class RegressionReportNotifier extends Notifier {
         return sendToCulprits;
     }
 
+    public boolean getWhenRegression() {
+        return whenRegression;
+    }
+
+    public boolean getWhenProgression() {
+        return whenProgression;
+    }
+
+    public boolean getWhenNewFailed() {
+        return whenNewFailed;
+    }
+
+    public boolean getWhenNewPassed() {
+        return whenNewPassed;
+    }
+
     @Override
     public boolean perform(AbstractBuild<?, ?> build, Launcher launcher,
             BuildListener listener) throws InterruptedException {
