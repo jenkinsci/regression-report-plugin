@@ -15,13 +15,20 @@ import hudson.tasks.Notifier;
 import hudson.tasks.Publisher;
 import hudson.tasks.Mailer;
 import hudson.tasks.junit.CaseResult;
+import hudson.tasks.junit.ClassResult;
+import hudson.tasks.junit.PackageResult;
 import hudson.tasks.test.AbstractTestResultAction;
+import hudson.tasks.test.AggregatedTestResultAction;
 import hudson.tasks.test.TestResult;
+import hudson.tasks.junit.TestResultAction;
 
 import java.io.PrintStream;
 import java.util.Date;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Set;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.StringTokenizer;
 
 import javax.mail.Address;
@@ -152,11 +159,11 @@ public final class RegressionReportNotifier extends Notifier {
         List<Tuple<CaseResult, CaseResult>> testTuples = new ArrayList<Tuple<CaseResult, CaseResult>>();
         AbstractBuild<?, ?> prevBuild = build.getPreviousBuild();
         if (prevBuild != null) {
-            testTuples = TestBuddyHelper.matchTestsBetweenBuilds(build, prevBuild);
+            testTuples = matchTestsBetweenBuilds(build, prevBuild);
         }
 
-        List<Tuple<CaseResult, CaseResult>> progressionedTestsTuples = Lists.newArrayList(Iterables.filter(testTuples, new ProgressionPredicate()));
-        List<CaseResult> progressionedTests = Lists.newArrayList(Iterables.transform(newTestTuples, new TupleToFirst()));
+        List<Tuple<CaseResult, CaseResult>> progressionTuples = Lists.newArrayList(Iterables.filter(testTuples, new ProgressionPredicate()));
+        List<CaseResult> progressions = Lists.newArrayList(Iterables.transform(progressionTuples, new TupleToFirst()));
 
         List<Tuple<CaseResult, CaseResult>> newTestTuples = Lists.newArrayList(Iterables.filter(testTuples, new NewTestPredicate()));
         List<CaseResult> newTests = Lists.newArrayList(Iterables.transform(newTestTuples, new TupleToFirst()));
@@ -166,7 +173,7 @@ public final class RegressionReportNotifier extends Notifier {
 
         writeToConsole(regressionedTests, listener);
         try {
-            mailReport(regressionedTests, progressionedTests, newTestsFailed, newTestsPassed, recipients, listener, build);
+            mailReport(regressionedTests, progressions, newTestsFailed, newTestsPassed, recipients, listener, build);
         } catch (MessagingException e) {
             e.printStackTrace(listener.error("failed to send mails."));
         }
@@ -201,7 +208,7 @@ public final class RegressionReportNotifier extends Notifier {
 
     private void mailReport(
             List<CaseResult> regressions,
-            List<CaseResult> progressionedTests,
+            List<CaseResult> progressions,
             List<CaseResult> newTestsFailed,
             List<CaseResult> newTestsPassed, 
             String recipients,
@@ -211,7 +218,7 @@ public final class RegressionReportNotifier extends Notifier {
 
         if (
             (regressions.isEmpty() || !whenRegression) &&
-            (newlyPassed.isEmpty() || !whenProgression) &&
+            (progressions.isEmpty() || !whenProgression) &&
             (newTestsFailed.isEmpty() || !whenNewFailed) &&
             (newTestsPassed.isEmpty() || !whenNewPassed)
             ) {
@@ -239,8 +246,8 @@ public final class RegressionReportNotifier extends Notifier {
         }
 
         if (whenProgression) {
-            builder.append(newlyPassed.size() + " progressions found.");
-            appendTests(newlyPassed, builder);
+            builder.append(progressions.size() + " progressions found.");
+            appendTests(progressions, builder);
         }
 
         if (whenNewPassed) {
@@ -364,13 +371,13 @@ public final class RegressionReportNotifier extends Notifier {
 
         for (AbstractTestResultAction testAction : testActions) {
             if (testAction instanceof TestResultAction) {
-                TestResult testResult = (TestResult) testAction.getResult();
+                hudson.tasks.junit.TestResult testResult = (hudson.tasks.junit.TestResult) testAction.getResult();
                 ret.addAll(getTestsFromTestResult(testResult));
             }
             else if (testAction instanceof AggregatedTestResultAction){
                 List<AggregatedTestResultAction.ChildReport> child_reports = ((AggregatedTestResultAction)testAction).getChildReports();
                 for(AggregatedTestResultAction.ChildReport child_report: child_reports){
-                    TestResult testResult = (TestResult) child_report.result;
+                    hudson.tasks.junit.TestResult testResult = (hudson.tasks.junit.TestResult) child_report.result;
                     ret.addAll(getTestsFromTestResult(testResult));
                 }
             }
@@ -379,6 +386,26 @@ public final class RegressionReportNotifier extends Notifier {
         return ret;
     }
 
+    /**
+     * A helper fuction that returns a of CaseResult from a TestReult
+     * object.
+     * @param testResult a TestResult object that contains PackageResult as its
+     *      children
+     * @return An ArrayList of CaseResult.
+     */
+    private static ArrayList<CaseResult> getTestsFromTestResult(hudson.tasks.junit.TestResult testResult) {
+        ArrayList<CaseResult> tests = new ArrayList<CaseResult>();
+        Collection<PackageResult> packageResults = testResult.getChildren();
+        for (PackageResult packageResult : packageResults) {
+            Collection<ClassResult> classResults = packageResult.getChildren();
+            for(ClassResult class_result : classResults){
+                Collection<CaseResult> caseResults = class_result.getChildren();
+                tests.addAll(caseResults);
+            }
+        }
+
+        return tests;
+    }
 
     @Extension
     public static final class DescriptorImpl extends
