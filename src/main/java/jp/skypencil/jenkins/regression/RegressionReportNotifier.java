@@ -67,6 +67,15 @@ public final class RegressionReportNotifier extends Notifier {
         }
     };
 
+    public RegressionReportNotifier(String recipients, boolean sendToCulprits) {
+        this.recipients = recipients;
+        this.sendToCulprits = sendToCulprits;
+        this.whenRegression = true;
+        this.whenProgression = false;
+        this.whenNewFailed = false;
+        this.whenNewPassed = false;       
+    }
+
     @DataBoundConstructor
     public RegressionReportNotifier(
             String recipients, 
@@ -137,11 +146,27 @@ public final class RegressionReportNotifier extends Notifier {
         }
 
         logger.println("regression reporter starts now...");
+
         List<CaseResult> regressionedTests = listRegressions(testResultAction);
+        
+        List<Tuple<CaseResult, CaseResult>> testTuples = new ArrayList<Tuple<CaseResult, CaseResult>>();
+        AbstractBuild<?, ?> prevBuild = build.getPreviousBuild();
+        if (prevBuild != null) {
+            testTuples = TestBuddyHelper.matchTestsBetweenBuilds(build, prevBuild);
+        }
+
+        List<Tuple<CaseResult, CaseResult>> progressionedTestsTuples = Lists.newArrayList(Iterables.filter(testTuples, new ProgressionPredicate()));
+        List<CaseResult> progressionedTests = Lists.newArrayList(Iterables.transform(newTestTuples, new TupleToFirst()));
+
+        List<Tuple<CaseResult, CaseResult>> newTestTuples = Lists.newArrayList(Iterables.filter(testTuples, new NewTestPredicate()));
+        List<CaseResult> newTests = Lists.newArrayList(Iterables.transform(newTestTuples, new TupleToFirst()));
+
+        List<CaseResult> newTestsPassed = Lists.newArrayList(Iterables.filter(newTests, new PassedPredicate()));
+        List<CaseResult> newTestsFailed = Lists.newArrayList(Iterables.filter(newTests, new FailedPredicate()));
 
         writeToConsole(regressionedTests, listener);
         try {
-            mailReport(regressionedTests, recipients, listener, build);
+            mailReport(regressionedTests, progressionedTests, newTestsFailed, newTestsPassed, recipients, listener, build);
         } catch (MessagingException e) {
             e.printStackTrace(listener.error("failed to send mails."));
         }
@@ -174,10 +199,22 @@ public final class RegressionReportNotifier extends Notifier {
         }
     }
 
-    private void mailReport(List<CaseResult> regressions, String recipients,
-            BuildListener listener, AbstractBuild<?, ?> build)
-            throws MessagingException {
-        if (regressions.isEmpty()) {
+    private void mailReport(
+            List<CaseResult> regressions,
+            List<CaseResult> progressionedTests,
+            List<CaseResult> newTestsFailed,
+            List<CaseResult> newTestsPassed, 
+            String recipients,
+            BuildListener listener,
+            AbstractBuild<?, ?> build
+            ) throws MessagingException {
+
+        if (
+            (regressions.isEmpty() || !whenRegression) &&
+            (newlyPassed.isEmpty() || !whenProgression) &&
+            (newTestsFailed.isEmpty() || !whenNewFailed) &&
+            (newTestsPassed.isEmpty() || !whenNewPassed)
+            ) {
             return;
         }
 
@@ -195,24 +232,27 @@ public final class RegressionReportNotifier extends Notifier {
         builder.append(Util.encode(rootUrl));
         builder.append(Util.encode(build.getUrl()));
         builder.append("\n\n");
-        builder.append(regressions.size() + " regressions found.");
-        builder.append("\n");
-        for (int i = 0, max = Math
-                .min(regressions.size(), MAX_RESULTS_PER_MAIL); i < max; ++i) { // to
-                                                                                // save
-                                                                                // heap
-                                                                                // to
-                                                                                // avoid
-                                                                                // OOME.
-            CaseResult result = regressions.get(i);
-            builder.append("  ");
-            builder.append(result.getFullName());
-            builder.append("\n");
+
+        if (whenRegression) {
+            builder.append(regressions.size() + " regressions found.");
+            appendTests(regressions, builder);
         }
-        if (regressions.size() > MAX_RESULTS_PER_MAIL) {
-            builder.append("  ...");
-            builder.append("\n");
+
+        if (whenProgression) {
+            builder.append(newlyPassed.size() + " progressions found.");
+            appendTests(newlyPassed, builder);
         }
+
+        if (whenNewPassed) {
+            builder.append(newTestsPassed.size() + " passing new tests found.");
+            appendTests(newTestsPassed, builder);
+        }
+
+        if (whenNewFailed) {
+            builder.append(newTestsFailed.size() + " failing new tests found.");
+            appendTests(newTestsFailed, builder);
+        }
+
         List<Address> recipentList = parse(recipients, listener);
         if (sendToCulprits) {
             recipentList.addAll(loadAddrOfCulprits(build, listener));
@@ -253,6 +293,92 @@ public final class RegressionReportNotifier extends Notifier {
 
         return list;
     }
+
+    private void appendTests(List<CaseResult> tests, StringBuilder builder) {
+        builder.append("\n");
+        for (int i = 0, max = Math.min(tests.size(), MAX_RESULTS_PER_MAIL); i < max; ++i) {
+            // to save heap to avoid OOME.
+            CaseResult result = tests.get(i);
+            builder.append("  ");
+            builder.append(result.getFullName());
+            builder.append("\n");
+        }
+        if (tests.size() > MAX_RESULTS_PER_MAIL) {
+            builder.append("  ...");
+            builder.append("\n");
+        }
+    }
+
+    /**
+     * Given two builds thisBuild and otherBuild, returns the a list of Tuples
+     * of matching CaseResult. Each pair is of form 
+     * (CaseResultFromThisBuild, CaseResultFromThatBuild)
+     *
+     * @param thisBuild an AbstractBuild.
+     * @param otherBuild another AbstractBuild, which is compared against thisBuild
+     * @return an ArrayList of Tuples of CaseResults.Each pair is of form 
+     * (CaseResultFromThisBuild, CaseResultFromThatBuild)
+     * if a matching case result is not found in the other build, a null is used
+     * instead.
+     */
+    private ArrayList<Tuple<CaseResult, CaseResult>> matchTestsBetweenBuilds(AbstractBuild thisBuild, AbstractBuild otherBuild) {
+        ArrayList<CaseResult> thisResults = getAllCaseResultsForBuild(thisBuild);
+        ArrayList<CaseResult> otherResults = getAllCaseResultsForBuild(otherBuild);
+
+        HashMap<String, CaseResult> hmap = new HashMap<String, CaseResult>();
+        for (CaseResult otherCaseResult : otherResults) {
+            hmap.put(otherCaseResult.getFullName(), otherCaseResult); // add (test_name, CaseResult) to hmap
+        }
+
+        ArrayList<Tuple<CaseResult, CaseResult>> returnValue = new ArrayList<Tuple<CaseResult, CaseResult>>();
+        for (CaseResult thisCaseResult : thisResults) {
+            String currTestName = thisCaseResult.getFullName();
+            CaseResult otherCaseResult = null;
+            if (hmap.containsKey(currTestName)) {
+                otherCaseResult = hmap.get(currTestName);
+                hmap.remove(currTestName);
+            }
+            Tuple tuple = new Tuple<CaseResult, CaseResult>(thisCaseResult, otherCaseResult);
+            returnValue.add(tuple);
+        }
+
+        for (CaseResult otherCaseResultInMap : hmap.values()) {
+            Tuple tuple = new Tuple<CaseResult, CaseResult>(null, otherCaseResultInMap);
+            returnValue.add(tuple);
+        }
+
+        return returnValue;
+    }
+
+    /** 
+     * Returns a list of CaseResults that are contained in a build. Currently this
+     * function only handles builds whose getResult return 
+     * an object of type TestResultAction or AggregatedTestResultAction
+     * @param build an AbstractBuild object from which the caller wants to get
+     *      the case results.
+     * @return an ArrayList of CaseResult.
+     */
+    public static ArrayList<CaseResult> getAllCaseResultsForBuild(AbstractBuild build) {
+        ArrayList<CaseResult> ret = new ArrayList<CaseResult>();
+        List<AbstractTestResultAction> testActions = build.getActions(AbstractTestResultAction.class);
+
+        for (AbstractTestResultAction testAction : testActions) {
+            if (testAction instanceof TestResultAction) {
+                TestResult testResult = (TestResult) testAction.getResult();
+                ret.addAll(getTestsFromTestResult(testResult));
+            }
+            else if (testAction instanceof AggregatedTestResultAction){
+                List<AggregatedTestResultAction.ChildReport> child_reports = ((AggregatedTestResultAction)testAction).getChildReports();
+                for(AggregatedTestResultAction.ChildReport child_report: child_reports){
+                    TestResult testResult = (TestResult) child_report.result;
+                    ret.addAll(getTestsFromTestResult(testResult));
+                }
+            }
+            //Else, unsupported project type.
+        }
+        return ret;
+    }
+
 
     @Extension
     public static final class DescriptorImpl extends
