@@ -8,6 +8,6 @@ import com.google.common.base.Predicate;
 class FailedPredicate implements Predicate<CaseResult> {
     @Override
     public boolean apply(CaseResult input) {
-        return !input.isFailed();
+        return input.isFailed();
     }
 }
