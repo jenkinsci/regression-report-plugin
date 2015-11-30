@@ -34,7 +34,7 @@ public class RegressionReportHelper {
                 hudson.tasks.junit.TestResult testResult = (hudson.tasks.junit.TestResult) testAction.getResult();
                 ret.addAll(getTestsFromTestResult(testResult));
             }
-            else if (testAction instanceof AggregatedTestResultAction){
+            else if (testAction instanceof AggregatedTestResultAction) {
                 List<AggregatedTestResultAction.ChildReport> child_reports = ((AggregatedTestResultAction)testAction).getChildReports();
                 for(AggregatedTestResultAction.ChildReport child_report: child_reports){
                     hudson.tasks.junit.TestResult testResult = (hudson.tasks.junit.TestResult) child_report.result;
@@ -58,7 +58,7 @@ public class RegressionReportHelper {
         Collection<PackageResult> packageResults = testResult.getChildren();
         for (PackageResult packageResult : packageResults) {
             Collection<ClassResult> classResults = packageResult.getChildren();
-            for(ClassResult classResult : classResults){
+            for(ClassResult classResult : classResults) {
                 Collection<CaseResult> caseResults = classResult.getChildren();
                 tests.addAll(caseResults);
             }
