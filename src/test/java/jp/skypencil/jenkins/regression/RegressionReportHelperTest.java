@@ -99,7 +99,7 @@ public class RegressionReportHelperTest {
     	assertEquals(5, myPairs.size());
     	Pair<CaseResult, CaseResult> lastPair = myPairs.get(4);
     	assertEquals(null, lastPair.first);
-    	assertEquals(true, lastPair.second.isFailed());
+    	assertTrue(lastPair.second.isFailed());
     }
     
     @SuppressWarnings("rawtypes")
@@ -112,11 +112,11 @@ public class RegressionReportHelperTest {
     	ArrayList<Pair<CaseResult, CaseResult>> myPairs = RegressionReportHelper.matchTestsBetweenBuilds(b4, b5);
     	assertEquals(5, myPairs.size());
     	Pair<CaseResult, CaseResult> fourthPair = myPairs.get(3);
-    	assertEquals(true, fourthPair.first.isPassed());
+    	assertTrue(fourthPair.first.isPassed());
     	assertEquals(null, fourthPair.second);
     	
     	Pair<CaseResult, CaseResult> lastPair = myPairs.get(4);
-    	assertEquals(false, lastPair.first.isPassed());
-    	assertEquals(true, lastPair.second.isPassed());
+    	assertFalse(lastPair.first.isPassed());
+    	assertTrue(lastPair.second.isPassed());
     }
 }
