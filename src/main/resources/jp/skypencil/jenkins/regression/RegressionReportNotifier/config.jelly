@@ -5,4 +5,16 @@
   <f:entry field="sendToCulprits" title="${%SentToCulprits}">
     <f:checkbox />
   </f:entry>
+  <f:entry field="whenRegression" title="${%WhenRegression}">
+    <f:checkbox />
+  </f:entry>
+    <f:entry field="whenProgression" title="${%WhenProgression}">
+    <f:checkbox />
+  </f:entry>
+    <f:entry field="whenNewFailed" title="${%WhenNewFailed}">
+    <f:checkbox />
+  </f:entry>
+    <f:entry field="whenNewPassed" title="${%WhenNewPassed}">
+    <f:checkbox />
+  </f:entry>
 </j:jelly>
