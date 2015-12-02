@@ -71,8 +71,8 @@ public class RegressionReportHelperTest {
     	AbstractBuild b1 = project.getBuildByNumber(1);
     	AbstractBuild b2 = project.getBuildByNumber(2);
     	
-    	ArrayList<Tuple<CaseResult, CaseResult>> myTuples = RegressionReportHelper.matchTestsBetweenBuilds(b1, b2);
-    	assertEquals(3, myTuples.size());
+    	ArrayList<Pair<CaseResult, CaseResult>> myPairs = RegressionReportHelper.matchTestsBetweenBuilds(b1, b2);
+    	assertEquals(3, myPairs.size());
     }
     
     @SuppressWarnings("rawtypes")
@@ -82,10 +82,10 @@ public class RegressionReportHelperTest {
     	AbstractBuild b2 = project.getBuildByNumber(2);
     	AbstractBuild b3 = project.getBuildByNumber(3);
     	
-    	ArrayList<Tuple<CaseResult, CaseResult>> myTuples = RegressionReportHelper.matchTestsBetweenBuilds(b2, b3);
-    	assertEquals(4, myTuples.size());
-    	Tuple<CaseResult, CaseResult> lastTuple = myTuples.get(3);
-    	assertEquals(null, lastTuple.first);
+    	ArrayList<Pair<CaseResult, CaseResult>> myPairs = RegressionReportHelper.matchTestsBetweenBuilds(b2, b3);
+    	assertEquals(4, myPairs.size());
+    	Pair<CaseResult, CaseResult> lastPair = myPairs.get(3);
+    	assertEquals(null, lastPair.first);
     }
     
     @SuppressWarnings("rawtypes")
@@ -95,11 +95,11 @@ public class RegressionReportHelperTest {
     	AbstractBuild b3 = project.getBuildByNumber(3);
     	AbstractBuild b4 = project.getBuildByNumber(4);
     	
-    	ArrayList<Tuple<CaseResult, CaseResult>> myTuples = RegressionReportHelper.matchTestsBetweenBuilds(b3, b4);
-    	assertEquals(5, myTuples.size());
-    	Tuple<CaseResult, CaseResult> lastTuple = myTuples.get(4);
-    	assertEquals(null, lastTuple.first);
-    	assertEquals(true, lastTuple.second.isFailed());
+    	ArrayList<Pair<CaseResult, CaseResult>> myPairs = RegressionReportHelper.matchTestsBetweenBuilds(b3, b4);
+    	assertEquals(5, myPairs.size());
+    	Pair<CaseResult, CaseResult> lastPair = myPairs.get(4);
+    	assertEquals(null, lastPair.first);
+    	assertEquals(true, lastPair.second.isFailed());
     }
     
     @SuppressWarnings("rawtypes")
@@ -109,14 +109,14 @@ public class RegressionReportHelperTest {
     	AbstractBuild b4 = project.getBuildByNumber(4);
     	AbstractBuild b5 = project.getBuildByNumber(5);
     	
-    	ArrayList<Tuple<CaseResult, CaseResult>> myTuples = RegressionReportHelper.matchTestsBetweenBuilds(b4, b5);
-    	assertEquals(5, myTuples.size());
-    	Tuple<CaseResult, CaseResult> fourthTuple = myTuples.get(3);
-    	assertEquals(true, fourthTuple.first.isPassed());
-    	assertEquals(null, fourthTuple.second);
+    	ArrayList<Pair<CaseResult, CaseResult>> myPairs = RegressionReportHelper.matchTestsBetweenBuilds(b4, b5);
+    	assertEquals(5, myPairs.size());
+    	Pair<CaseResult, CaseResult> fourthPair = myPairs.get(3);
+    	assertEquals(true, fourthPair.first.isPassed());
+    	assertEquals(null, fourthPair.second);
     	
-    	Tuple<CaseResult, CaseResult> lastTuple = myTuples.get(4);
-    	assertEquals(false, lastTuple.first.isPassed());
-    	assertEquals(true, lastTuple.second.isPassed());
+    	Pair<CaseResult, CaseResult> lastPair = myPairs.get(4);
+    	assertEquals(false, lastPair.first.isPassed());
+    	assertEquals(true, lastPair.second.isPassed());
     }
 }
