@@ -69,18 +69,18 @@ public class RegressionReportHelper {
 
 
     /**
-     * Given two builds thisBuild and otherBuild, returns the a list of Tuples
+     * Given two builds thisBuild and otherBuild, returns the a list of Pairs
      * of matching CaseResult. Each pair is of form 
      * (CaseResultFromThisBuild, CaseResultFromThatBuild)
      *
      * @param thisBuild an AbstractBuild.
      * @param otherBuild another AbstractBuild, which is compared against thisBuild
-     * @return an ArrayList of Tuples of CaseResults.Each pair is of form 
+     * @return an ArrayList of Pairs of CaseResults.Each pair is of form 
      * (CaseResultFromThisBuild, CaseResultFromThatBuild)
      * if a matching case result is not found in the other build, a null is used
      * instead.
      */
-    public static ArrayList<Tuple<CaseResult, CaseResult>> matchTestsBetweenBuilds(AbstractBuild thisBuild, AbstractBuild otherBuild) {
+    public static ArrayList<Pair<CaseResult, CaseResult>> matchTestsBetweenBuilds(AbstractBuild thisBuild, AbstractBuild otherBuild) {
         ArrayList<CaseResult> thisResults = getAllCaseResultsForBuild(thisBuild);
         ArrayList<CaseResult> otherResults = getAllCaseResultsForBuild(otherBuild);
 
@@ -89,7 +89,7 @@ public class RegressionReportHelper {
             hmap.put(otherCaseResult.getFullName(), otherCaseResult); // add (test_name, CaseResult) to hmap
         }
 
-        ArrayList<Tuple<CaseResult, CaseResult>> returnValue = new ArrayList<Tuple<CaseResult, CaseResult>>();
+        ArrayList<Pair<CaseResult, CaseResult>> returnValue = new ArrayList<Pair<CaseResult, CaseResult>>();
         for (CaseResult thisCaseResult : thisResults) {
             String currTestName = thisCaseResult.getFullName();
             CaseResult otherCaseResult = null;
@@ -97,13 +97,13 @@ public class RegressionReportHelper {
                 otherCaseResult = hmap.get(currTestName);
                 hmap.remove(currTestName);
             }
-            Tuple tuple = new Tuple<CaseResult, CaseResult>(thisCaseResult, otherCaseResult);
-            returnValue.add(tuple);
+            Pair pair = new Pair<CaseResult, CaseResult>(thisCaseResult, otherCaseResult);
+            returnValue.add(pair);
         }
 
         for (CaseResult otherCaseResultInMap : hmap.values()) {
-            Tuple tuple = new Tuple<CaseResult, CaseResult>(null, otherCaseResultInMap);
-            returnValue.add(tuple);
+            Pair pair = new Pair<CaseResult, CaseResult>(null, otherCaseResultInMap);
+            returnValue.add(pair);
         }
 
         return returnValue;

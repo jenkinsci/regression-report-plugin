@@ -152,17 +152,17 @@ public final class RegressionReportNotifier extends Notifier {
 
         List<CaseResult> regressionedTests = listRegressions(testResultAction);
         
-        List<Tuple<CaseResult, CaseResult>> testTuples = new ArrayList<Tuple<CaseResult, CaseResult>>();
+        List<Pair<CaseResult, CaseResult>> testPairs = new ArrayList<Pair<CaseResult, CaseResult>>();
         AbstractBuild<?, ?> prevBuild = build.getPreviousBuild();
         if (prevBuild != null) {
-            testTuples = RegressionReportHelper.matchTestsBetweenBuilds(build, prevBuild);
+            testPairs = RegressionReportHelper.matchTestsBetweenBuilds(build, prevBuild);
         }
 
-        List<Tuple<CaseResult, CaseResult>> progressionTuples = Lists.newArrayList(Iterables.filter(testTuples, new ProgressionPredicate()));
-        List<CaseResult> progressions = Lists.newArrayList(Iterables.transform(progressionTuples, new TupleToFirst()));
+        List<Pair<CaseResult, CaseResult>> progressionPairs = Lists.newArrayList(Iterables.filter(testPairs, new ProgressionPredicate()));
+        List<CaseResult> progressions = Lists.newArrayList(Iterables.transform(progressionPairs, new PairToFirst()));
 
-        List<Tuple<CaseResult, CaseResult>> newTestTuples = Lists.newArrayList(Iterables.filter(testTuples, new NewTestPredicate()));
-        List<CaseResult> newTests = Lists.newArrayList(Iterables.transform(newTestTuples, new TupleToFirst()));
+        List<Pair<CaseResult, CaseResult>> newTestPairs = Lists.newArrayList(Iterables.filter(testPairs, new NewTestPredicate()));
+        List<CaseResult> newTests = Lists.newArrayList(Iterables.transform(newTestPairs, new PairToFirst()));
 
         List<CaseResult> newTestsPassed = Lists.newArrayList(Iterables.filter(newTests, new PassedPredicate()));
         List<CaseResult> newTestsFailed = Lists.newArrayList(Iterables.filter(newTests, new FailedPredicate()));
