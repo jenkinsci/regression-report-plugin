@@ -9,6 +9,9 @@ import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.StringTokenizer;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 
 import javax.activation.DataHandler;
 import javax.activation.DataSource;
@@ -65,6 +68,11 @@ public final class RegressionReportNotifier extends Notifier {
     private final String recipients;
     private final boolean sendToCulprits;
     private final boolean attachLog;
+    private final boolean whenRegression;
+    private final boolean whenProgression;
+    private final boolean whenNewFailed;
+    private final boolean whenNewPassed;
+
     private MailSender mailSender = new RegressionReportNotifier.MailSender() {
         @Override
         public void send(MimeMessage message) throws MessagingException {
@@ -76,13 +84,32 @@ public final class RegressionReportNotifier extends Notifier {
         this.recipients = recipients;
         this.sendToCulprits = sendToCulprits;
         this.attachLog = false;
+        this.whenRegression = true;
+        this.whenProgression = false;
+        this.whenNewFailed = false;
+        this.whenNewPassed = false;       
     }
 
-    @DataBoundConstructor
     public RegressionReportNotifier(String recipients, boolean sendToCulprits, boolean attachLog) {
         this.recipients = recipients;
         this.sendToCulprits = sendToCulprits;
         this.attachLog = attachLog;
+        this.whenRegression = true;
+        this.whenProgression = false;
+        this.whenNewFailed = false;
+        this.whenNewPassed = false;       
+    }
+
+    @DataBoundConstructor
+    public RegressionReportNotifier(String recipients, boolean sendToCulprits, boolean attachLog,
+            boolean whenRegression, boolean whenProgression, boolean whenNewFailed, boolean whenNewPassed) {
+        this.recipients = recipients;
+        this.sendToCulprits = sendToCulprits;
+        this.attachLog = attachLog;
+        this.whenRegression = whenRegression;
+        this.whenProgression = whenProgression;
+        this.whenNewFailed = whenNewFailed;
+        this.whenNewPassed = whenNewPassed;       
     }
 
     @VisibleForTesting
@@ -107,6 +134,22 @@ public final class RegressionReportNotifier extends Notifier {
         return attachLog;
     }
 
+    public boolean getWhenRegression() {
+        return whenRegression;
+    }
+
+    public boolean getWhenProgression() {
+        return whenProgression;
+    }
+
+    public boolean getWhenNewFailed() {
+        return whenNewFailed;
+    }
+
+    public boolean getWhenNewPassed() {
+        return whenNewPassed;
+    }
+
     @Override
     public boolean perform(AbstractBuild<?, ?> build, Launcher launcher,
             BuildListener listener) throws InterruptedException, IOException {
@@ -127,10 +170,33 @@ public final class RegressionReportNotifier extends Notifier {
 
         logger.println("regression reporter starts now...");
         List<CaseResult> regressionedTests = listRegressions(testResultAction);
+        
+        List<Pair<CaseResult, CaseResult>> testPairs = new ArrayList<Pair<CaseResult, CaseResult>>();
+        AbstractBuild<?, ?> prevBuild = build.getPreviousBuild();
+        if (prevBuild != null) {
+            testPairs = RegressionReportHelper.matchTestsBetweenBuilds(build, prevBuild);
+        }
+
+        List<Pair<CaseResult, CaseResult>> progressionPairs = Lists.newArrayList(Iterables.filter(testPairs, new ProgressionPredicate()));
+        List<CaseResult> progressionedTests = Lists.newArrayList(Iterables.transform(progressionPairs, new PairToFirst()));
+
+        List<Pair<CaseResult, CaseResult>> newTestPairs = Lists.newArrayList(Iterables.filter(testPairs, new NewTestPredicate()));
+        List<CaseResult> newTests = Lists.newArrayList(Iterables.transform(newTestPairs, new PairToFirst()));
+
+        List<CaseResult> newTestsPassed = Lists.newArrayList(Iterables.filter(newTests, new PassedPredicate()));
+        List<CaseResult> newTestsFailed = Lists.newArrayList(Iterables.filter(newTests, new FailedPredicate()));
 
         writeToConsole(regressionedTests, listener);
         try {
-            mailReport(regressionedTests, recipients, listener, build);
+            mailReport(
+                    regressionedTests,
+                    progressionedTests,
+                    newTestsFailed, 
+                    newTestsPassed, 
+                    recipients, 
+                    listener, 
+                    build
+                );
         } catch (MessagingException e) {
             e.printStackTrace(listener.error("failed to send mails."));
         }
@@ -163,10 +229,21 @@ public final class RegressionReportNotifier extends Notifier {
         }
     }
 
-    private void mailReport(List<CaseResult> regressions, String recipients,
-            BuildListener listener, AbstractBuild<?, ?> build)
-            throws MessagingException, IOException {
-        if (regressions.isEmpty()) {
+    private void mailReport(
+            List<CaseResult> regressions, 
+            List<CaseResult> progressions, 
+            List<CaseResult> newTestsFailed, 
+            List<CaseResult> newTestsPassed, 
+            String recipients, 
+            BuildListener listener, 
+            AbstractBuild<?, ?> build
+        ) throws MessagingException, IOException {
+        if (
+            (regressions.isEmpty() || !whenRegression) &&
+            (progressions.isEmpty() || !whenProgression) &&
+            (newTestsFailed.isEmpty() || !whenNewFailed) &&
+            (newTestsPassed.isEmpty() || !whenNewPassed)
+            ) {
             return;
         }
 
@@ -185,24 +262,27 @@ public final class RegressionReportNotifier extends Notifier {
         builder.append(Util.encode(rootUrl));
         builder.append(Util.encode(build.getUrl()));
         builder.append("\n\n");
-        builder.append(regressions.size() + " regressions found.");
-        builder.append("\n");
-        for (int i = 0, max = Math
-                .min(regressions.size(), MAX_RESULTS_PER_MAIL); i < max; ++i) { // to
-                                                                                // save
-                                                                                // heap
-                                                                                // to
-                                                                                // avoid
-                                                                                // OOME.
-            CaseResult result = regressions.get(i);
-            builder.append("  ");
-            builder.append(result.getFullName());
-            builder.append("\n");
+
+        if (whenRegression) {
+            builder.append(regressions.size() + " regressions found.");
+            appendTests(regressions, builder);
         }
-        if (regressions.size() > MAX_RESULTS_PER_MAIL) {
-            builder.append("  ...");
-            builder.append("\n");
+
+        if (whenProgression) {
+            builder.append(progressions.size() + " progressions found.");
+            appendTests(progressions, builder);
         }
+
+        if (whenNewPassed) {
+            builder.append(newTestsPassed.size() + " passing new tests found.");
+            appendTests(newTestsPassed, builder);
+        }
+
+        if (whenNewFailed) {
+            builder.append(newTestsFailed.size() + " failing new tests found.");
+            appendTests(newTestsFailed, builder);
+        }
+
         List<Address> recipentList = parse(recipients, listener);
         if (sendToCulprits) {
             recipentList.addAll(loadAddrOfCulprits(build, listener));
@@ -267,6 +347,21 @@ public final class RegressionReportNotifier extends Notifier {
         multipart.addBodyPart(emailAttachment);
 
         message.setContent(multipart);
+    }
+
+    private void appendTests(List<CaseResult> tests, StringBuilder builder) {
+        builder.append("\n");
+        for (int i = 0, max = Math.min(tests.size(), MAX_RESULTS_PER_MAIL); i < max; ++i) {
+            // to save heap to avoid OOME.
+            CaseResult result = tests.get(i);
+            builder.append("  ");
+            builder.append(result.getFullName());
+            builder.append("\n");
+        }
+        if (tests.size() > MAX_RESULTS_PER_MAIL) {
+            builder.append("  ...");
+            builder.append("\n");
+        }
     }
 
     @Extension
